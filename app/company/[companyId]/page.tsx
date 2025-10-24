@@ -1,4 +1,4 @@
-import { verifyUserToken } from '@whop/api';
+import { verifyUserToken } from '@/lib/whop-api';
 import { headers } from 'next/headers';
 import ClientPage from './client-page';
 

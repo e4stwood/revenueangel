@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { prisma } from '@/lib/data-manager';
 
 export default async function PlaybooksPage({
   params,
@@ -25,17 +26,24 @@ export default async function PlaybooksPage({
 
 async function PlaybooksList({ companyId }: { companyId: string }) {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const response = await fetch(`${baseUrl}/api/playbooks?companyId=${companyId}`, {
-      cache: 'no-store',
+    // Fetch playbooks directly from database
+    const playbooks = await prisma.playbook.findMany({
+      where: { companyId },
+      include: {
+        steps: {
+          include: {
+            template: true,
+          },
+          orderBy: { order: 'asc' },
+        },
+        _count: {
+          select: {
+            sends: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch playbooks');
-    }
-
-    const data = await response.json();
-    const playbooks = data.playbooks || [];
 
     if (playbooks.length === 0) {
       return (

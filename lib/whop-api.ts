@@ -1,36 +1,31 @@
 import { verifyUserToken } from '@whop/api';
+import Whop from '@whop/sdk';
 import { config } from './shared-utils';
 
 export { verifyUserToken };
 
+// Initialize Whop SDK client
+const whopClient = new Whop({
+  appID: process.env.WHOP_APP_ID || '',
+  apiKey: config.WHOP_API_KEY || '',
+});
+
 export const whopApi = {
   async checkIfUserHasAccessToCompany({ userId, companyId }: { userId: string; companyId: string }) {
     try {
-      // Use the real Whop API to check user access
-      const response = await fetch(`https://api.whop.com/api/v5/companies/${companyId}/members/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${config.WHOP_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          // User is not a member of this company
-          return {
-            hasAccessToCompany: {
-              accessLevel: 'none' as const
-            }
-          };
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Use Whop SDK to get company and check membership
+      const company = await whopClient.companies.retrieve(companyId);
+      
+      if (!company) {
+        return {
+          hasAccessToCompany: {
+            accessLevel: 'none' as const
+          }
+        };
       }
 
-      const memberData = await response.json();
-      
-      // Check if user is an owner/admin
-      // The API returns role information in the member data
-      const isOwner = memberData.role === 'owner' || memberData.is_owner === true;
+      // Check if user is the company owner
+      const isOwner = (company as any).owner?.id === userId || (company as any).owner_id === userId;
       
       return {
         hasAccessToCompany: {
@@ -49,18 +44,9 @@ export const whopApi = {
 
   async retrieveUser({ userId }: { userId: string }) {
     try {
-      const response = await fetch(`https://api.whop.com/api/v5/users/${userId}`, {
-        headers: {
-          'Authorization': `Bearer ${config.WHOP_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const userData = await response.json();
+      // Use Whop SDK to retrieve user
+      const userData = await whopClient.users.retrieve(userId);
+      
       return {
         publicUser: userData
       };
@@ -69,4 +55,7 @@ export const whopApi = {
       return null;
     }
   }
-}; 
+};
+
+// Export the Whop SDK client for use in other modules
+export { whopClient }; 

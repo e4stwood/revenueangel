@@ -45,6 +45,27 @@ export interface WebhookProcessorJob {
 class JobQueue {
   private boss: PgBoss | null = null;
   private isConnected = false;
+  private connecting = false;
+
+  /**
+   * Ensure connection is established (auto-connect if needed)
+   */
+  private async ensureConnected(): Promise<void> {
+    if (this.isConnected && this.boss) {
+      return;
+    }
+
+    // Prevent multiple simultaneous connection attempts
+    if (this.connecting) {
+      // Wait for existing connection attempt
+      while (this.connecting) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return;
+    }
+
+    await this.connect();
+  }
 
   /**
    * Initialize pg-boss with database connection
@@ -55,6 +76,8 @@ class JobQueue {
       return;
     }
 
+    this.connecting = true;
+
     try {
       // Use direct URL for pg-boss (not pooled connection)
       const connectionString = config.DIRECT_URL || config.DATABASE_URL;
@@ -62,16 +85,11 @@ class JobQueue {
       this.boss = new PgBoss({
         connectionString,
         schema: 'pgboss', // Separate schema for pg-boss tables
-        retryLimit: 3,
-        retryDelay: 5, // 5 seconds between retries
-        retryBackoff: true,
-        expireInHours: 24 * 7, // Keep completed jobs for 7 days
-        deleteAfterDays: 30, // Delete old jobs after 30 days
-        onComplete: false, // Don't notify on completion
       });
 
       await this.boss.start();
       this.isConnected = true;
+      this.connecting = false;
 
       logger.info('Job queue connected successfully', {
         schema: 'pgboss'
@@ -81,6 +99,7 @@ class JobQueue {
       await this.setupRecurringJobs();
 
     } catch (error) {
+      this.connecting = false;
       logger.error('Failed to connect to job queue', error as Error);
       throw error;
     }
@@ -114,6 +133,7 @@ class JobQueue {
    * Schedule a playbook check (usually handled by recurring job)
    */
   async schedulePlaybookCheck(data: PlaybookSchedulerJob = {}): Promise<string | null> {
+    await this.ensureConnected();
     if (!this.boss) throw new Error('Job queue not initialized');
 
     try {
@@ -135,6 +155,7 @@ class JobQueue {
    * Enqueue message sends for dispatch
    */
   async dispatchMessages(sendIds: string[]): Promise<string | null> {
+    await this.ensureConnected();
     if (!this.boss) throw new Error('Job queue not initialized');
     if (sendIds.length === 0) return null;
 
@@ -166,6 +187,7 @@ class JobQueue {
    * Process a webhook event
    */
   async processWebhook(webhookEventId: string, eventType: string, companyId: string): Promise<string | null> {
+    await this.ensureConnected();
     if (!this.boss) throw new Error('Job queue not initialized');
 
     try {
@@ -205,25 +227,31 @@ class JobQueue {
 
     await this.boss.work(
       jobType,
-      async (job) => {
-        try {
-          logger.debug(`Processing job ${jobType}`, {
-            jobId: job.id,
-            data: job.data
-          });
+      async (jobs) => {
+        // pg-boss v11 passes an array of jobs
+        const jobArray = Array.isArray(jobs) ? jobs : [jobs];
+        
+        for (const job of jobArray) {
+          try {
+            logger.debug(`Processing job ${jobType}`, {
+              jobId: job.id,
+              data: job.data
+            });
 
-          await handler(job);
+            // Cast to proper type for handler
+            await handler(job as PgBoss.Job<T>);
 
-          logger.debug(`Job ${jobType} completed`, {
-            jobId: job.id
-          });
+            logger.debug(`Job ${jobType} completed`, {
+              jobId: job.id
+            });
 
-        } catch (error) {
-          logger.error(`Job ${jobType} failed`, error as Error, {
-            jobId: job.id,
-            data: job.data
-          });
-          throw error; // Re-throw to trigger retry
+          } catch (error) {
+            logger.error(`Job ${jobType} failed`, error as Error, {
+              jobId: job.id,
+              data: job.data
+            });
+            throw error; // Re-throw to trigger retry
+          }
         }
       }
     );

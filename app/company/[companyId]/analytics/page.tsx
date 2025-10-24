@@ -1,4 +1,6 @@
 import { Suspense } from 'react';
+import { prisma } from '@/lib/data-manager';
+import { calculateRecoveredRevenue } from '@/lib/attribution';
 
 export default async function AnalyticsPage({
   params,
@@ -25,17 +27,74 @@ export default async function AnalyticsPage({
 
 async function AnalyticsContent({ companyId }: { companyId: string }) {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const response = await fetch(
-      `${baseUrl}/api/analytics/dashboard?companyId=${companyId}`,
-      { cache: 'no-store' }
-    );
+    // Fetch data directly from database
+    const revenue = await calculateRecoveredRevenue(companyId);
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch analytics');
-    }
+    // Get send stats
+    const sendStats = await prisma.send.groupBy({
+      by: ['status'],
+      where: { companyId },
+      _count: true,
+    });
 
-    const data = await response.json();
+    const sends = {
+      total: sendStats.reduce((sum, s) => sum + s._count, 0),
+      queued: sendStats.find(s => s.status === 'queued')?._count || 0,
+      sent: sendStats.find(s => s.status === 'sent')?._count || 0,
+      failed: sendStats.find(s => s.status === 'failed')?._count || 0,
+      skipped: sendStats.find(s => s.status === 'skipped')?._count || 0,
+    };
+
+    // Get playbook stats
+    const playbooks = await prisma.playbook.findMany({
+      where: { companyId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        enabled: true,
+        _count: {
+          select: {
+            sends: true,
+          },
+        },
+      },
+    });
+
+    // Get recent conversions
+    const recentConversions = await prisma.conversion.findMany({
+      where: { companyId },
+      include: {
+        member: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        send: {
+          select: {
+            playbook: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    const data = {
+      revenue: {
+        ...revenue,
+        recoveredRevenue: revenue.attributedRevenueCents / 100,
+      },
+      sends,
+      playbooks,
+      recentConversions,
+    };
 
     return (
       <div className="space-y-6">

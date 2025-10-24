@@ -4,8 +4,13 @@
  * Handles membership data fetching and access validation.
  */
 
-import { WhopAPI } from '@whop-apps/sdk';
+import Whop from '@whop/sdk';
 import { logger, retry } from './shared-utils';
+
+const whopClient = new Whop({
+  appID: process.env.WHOP_APP_ID || '',
+  apiKey: process.env.WHOP_API_KEY || '',
+});
 
 export interface MembershipData {
   id: string;
@@ -31,32 +36,23 @@ export async function listCompanyMemberships(
   try {
     logger.debug('Fetching company memberships', { companyId, filters });
 
-    const response = await retry(async () => {
-      return await WhopAPI.app().GET('/app/memberships', {
-        params: {
-          query: {
-            company_id: companyId,
-            ...(filters?.status && { status: filters.status }),
-            ...(filters?.planId && { plan_id: filters.planId }),
-            ...(filters?.limit && { per: filters.limit }),
-          },
-        },
+    const page = await retry(async () => {
+      return await whopClient.memberships.list({
+        company_id: companyId,
+        ...(filters?.status && { status: filters.status as any }),
+        ...(filters?.planId && { plan_id: filters.planId }),
+        ...(filters?.limit && { per: filters.limit }),
       });
     });
 
-    if (!response.data || !response.data.data) {
-      logger.warn('No memberships found', { companyId });
-      return [];
-    }
-
-    const memberships: MembershipData[] = response.data.data.map((m: any) => ({
-      id: m.id,
-      userId: m.user_id || m.user?.id,
-      planId: m.plan_id,
-      productId: m.product_id,
-      status: m.status,
-      createdAt: new Date(m.created_at * 1000),
-      expiresAt: m.expires_at ? new Date(m.expires_at * 1000) : undefined,
+    const memberships: MembershipData[] = page.data.map((membership: any) => ({
+      id: membership.id,
+      userId: membership.user_id,
+      planId: membership.plan_id,
+      productId: membership.product_id,
+      status: membership.status,
+      createdAt: new Date(membership.created_at * 1000),
+      expiresAt: membership.expires_at ? new Date(membership.expires_at * 1000) : undefined,
     }));
 
     logger.info('Fetched company memberships', {
@@ -79,28 +75,23 @@ export async function getMembershipDetails(membershipId: string): Promise<Member
   try {
     logger.debug('Fetching membership details', { membershipId });
 
-    const response = await retry(async () => {
-      return await WhopAPI.app().GET('/app/memberships/{id}', {
-        params: {
-          path: { id: membershipId },
-        },
-      });
+    const m = await retry(async () => {
+      return await whopClient.memberships.retrieve(membershipId);
     });
 
-    if (!response.data) {
+    if (!m) {
       logger.warn('Membership not found', { membershipId });
       return null;
     }
 
-    const m = response.data;
     return {
       id: m.id,
-      userId: m.user_id || m.user?.id,
-      planId: m.plan_id,
-      productId: m.product_id,
+      userId: (m as any).user_id || m.id,
+      planId: (m as any).plan_id || '',
+      productId: (m as any).product_id || '',
       status: m.status,
-      createdAt: new Date(m.created_at * 1000),
-      expiresAt: m.expires_at ? new Date(m.expires_at * 1000) : undefined,
+      createdAt: new Date((m as any).created_at * 1000 || Date.now()),
+      expiresAt: (m as any).expires_at ? new Date((m as any).expires_at * 1000) : undefined,
     };
 
   } catch (error) {
@@ -116,23 +107,12 @@ export async function checkUserAccess(userId: string, experienceId: string): Pro
   try {
     logger.debug('Checking user access', { userId, experienceId });
 
+    // Use SDK's checkAccess method
     const response = await retry(async () => {
-      return await WhopAPI.app().GET('/app/users/{id}/access/{resource_id}', {
-        params: {
-          path: {
-            id: userId,
-            resource_id: experienceId,
-          },
-        },
-      });
+      return await whopClient.users.checkAccess(experienceId, { id: userId });
     });
 
-    if (!response.data) {
-      return false;
-    }
-
-    // Check if user has any level of access
-    const hasAccess = (response.data as any).has_access === true;
+    const hasAccess = response?.has_access === true;
 
     logger.debug('User access check result', {
       userId,
