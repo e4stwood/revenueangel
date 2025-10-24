@@ -1,0 +1,9 @@
+Check background job setup - something doesnt seem right about the way its coonfigured (see initial imp - it wants it deployed seperately, should we add a docker file or somerthing and an automated seperate deployment?)
+
+Actually deploy the app and test it and make sure it works in our whop?
+
+Look at plan and implementations - work out whats next?
+
+I think we need a way to setup playbook - look at initial imp - its sort of saying do it via the api ? why ? 
+do we need an onboaridng flow?
+
