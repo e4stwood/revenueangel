@@ -21,6 +21,17 @@ model Company {
   createdAt DateTime @default(now()) @db.Timestamptz
   updatedAt DateTime @updatedAt @db.Timestamptz
 
+  // RevenueAngel Relations
+  members              Member[]
+  memberships          Membership[]
+  leads                Lead[]
+  playbooks            Playbook[]
+  messageTemplates     MessageTemplate[]
+  sends                Send[]
+  conversions          Conversion[]
+  webhookEvents        WebhookEvent[]
+  experimentAssignments ExperimentAssignment[]
+
   @@index([createdAt])
   @@map("companies")
 }
@@ -33,4 +44,315 @@ model ExperienceMapping {
 
   @@index([companyId])
   @@map("experience_mappings")
+}
+
+// =============================================================================
+// REVENUEANGEL MODELS - User & Membership Tracking
+// =============================================================================
+
+model Member {
+  id           String   @id @default(uuid()) @db.Uuid
+  whopUserId   String   @db.VarChar(255) // Whop user ID (user_xxx)
+  companyId    String   @db.VarChar(255)
+  email        String?  @db.VarChar(500)
+  phone        String?  @db.VarChar(100)
+  firstName    String?  @db.VarChar(255)
+  lastName     String?  @db.VarChar(255)
+  firstSeenAt  DateTime @default(now()) @db.Timestamptz
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  memberships  Membership[]
+  sends        Send[]
+  conversions  Conversion[]
+  experimentAssignments ExperimentAssignment[]
+
+  @@unique([companyId, whopUserId])
+  @@index([companyId])
+  @@index([whopUserId])
+  @@index([email])
+  @@map("members")
+}
+
+model Membership {
+  id                 String    @id @default(uuid()) @db.Uuid
+  companyId          String    @db.VarChar(255)
+  memberId           String    @db.Uuid
+  whopMembershipId   String    @unique @db.VarChar(255) // Whop membership ID (mem_xxx)
+  productId          String    @db.VarChar(255)
+  planId             String    @db.VarChar(255)
+  status             MembershipStatus @default(active)
+  startedAt          DateTime  @db.Timestamptz
+  currentPeriodEnd   DateTime? @db.Timestamptz
+  canceledAt         DateTime? @db.Timestamptz
+  createdAt          DateTime  @default(now()) @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @db.Timestamptz
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  member      Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  conversions Conversion[]
+
+  @@index([companyId])
+  @@index([memberId])
+  @@index([status])
+  @@index([planId])
+  @@index([whopMembershipId])
+  @@map("memberships")
+}
+
+enum MembershipStatus {
+  active
+  trialing
+  canceled
+  past_due
+  paused
+  incomplete
+  incomplete_expired
+}
+
+model Lead {
+  id            String       @id @default(uuid()) @db.Uuid
+  companyId     String       @db.VarChar(255)
+  contact       String       @db.VarChar(500)
+  contactType   ContactType
+  source        LeadSource
+  consentFlags  Json?        // Store consent/opt-in data
+  metadata      Json?        // Additional lead data
+  createdAt     DateTime     @default(now()) @db.Timestamptz
+  updatedAt     DateTime     @updatedAt @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sends   Send[]
+  experimentAssignments ExperimentAssignment[]
+
+  @@unique([companyId, contact, contactType])
+  @@index([companyId])
+  @@index([source])
+  @@map("leads")
+}
+
+enum ContactType {
+  email
+  phone
+  handle
+}
+
+enum LeadSource {
+  whop_store
+  manual
+  import
+  api
+  capture
+}
+
+// =============================================================================
+// REVENUEANGEL MODELS - Playbooks & Automation
+// =============================================================================
+
+model Playbook {
+  id          String       @id @default(uuid()) @db.Uuid
+  companyId   String       @db.VarChar(255)
+  type        PlaybookType
+  name        String       @db.VarChar(500)
+  description String?      @db.Text
+  enabled     Boolean      @default(false)
+  targetRules Json         // DSL for audience targeting
+  metadata    Json?        // Additional playbook config
+  createdAt   DateTime     @default(now()) @db.Timestamptz
+  updatedAt   DateTime     @updatedAt @db.Timestamptz
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  steps   PlaybookStep[]
+  sends   Send[]
+
+  @@index([companyId])
+  @@index([type])
+  @@index([enabled])
+  @@map("playbooks")
+}
+
+enum PlaybookType {
+  nurture
+  upsell
+  churnsave
+}
+
+model PlaybookStep {
+  id           String   @id @default(uuid()) @db.Uuid
+  playbookId   String   @db.Uuid
+  order        Int
+  delayMinutes Int      // Delay before sending this step
+  channel      Channel
+  templateId   String   @db.Uuid
+  abGroup      ABGroup  @default(All)
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  playbook Playbook        @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  template MessageTemplate @relation(fields: [templateId], references: [id])
+  sends    Send[]
+
+  @@unique([playbookId, order])
+  @@index([playbookId])
+  @@map("playbook_steps")
+}
+
+enum Channel {
+  push
+  dm
+  forum
+  email
+}
+
+enum ABGroup {
+  A
+  B
+  All
+}
+
+model MessageTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @db.VarChar(255)
+  name           String   @db.VarChar(500)
+  tone           Tone     @default(friendly)
+  body           String   @db.Text // Supports {{variables}}
+  ctaLabel       String?  @db.VarChar(255)
+  ctaRestPath    String?  @db.VarChar(1000)
+  ctaExternalUrl String?  @db.VarChar(2000)
+  metadata       Json?    // Additional template config
+  createdAt      DateTime @default(now()) @db.Timestamptz
+  updatedAt      DateTime @updatedAt @db.Timestamptz
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbookSteps PlaybookStep[]
+
+  @@index([companyId])
+  @@map("message_templates")
+}
+
+enum Tone {
+  friendly
+  expert
+  hype
+  minimal
+  custom
+}
+
+// =============================================================================
+// REVENUEANGEL MODELS - Message Sending & Tracking
+// =============================================================================
+
+model Send {
+  id         String     @id @default(uuid()) @db.Uuid
+  companyId  String     @db.VarChar(255)
+  playbookId String     @db.Uuid
+  stepId     String     @db.Uuid
+  memberId   String?    @db.Uuid // Null for lead sends
+  leadId     String?    @db.Uuid // Null for member sends
+  channel    Channel
+  status     SendStatus @default(queued)
+  externalId String?    @db.VarChar(500) // Whop notification ID
+  content    String     @db.Text // Rendered message content
+  metadata   Json?      // Additional send data
+  sentAt     DateTime?  @db.Timestamptz
+  openedAt   DateTime?  @db.Timestamptz
+  clickedAt  DateTime?  @db.Timestamptz
+  scheduledFor DateTime @db.Timestamptz // When to send
+  createdAt  DateTime   @default(now()) @db.Timestamptz
+  updatedAt  DateTime   @updatedAt @db.Timestamptz
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  playbook    Playbook     @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  step        PlaybookStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  member      Member?      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  conversions Conversion[]
+
+  @@index([companyId])
+  @@index([memberId])
+  @@index([leadId])
+  @@index([playbookId])
+  @@index([stepId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([sentAt])
+  @@map("sends")
+}
+
+enum SendStatus {
+  queued
+  sent
+  failed
+  skipped
+}
+
+model Conversion {
+  id               String   @id @default(uuid()) @db.Uuid
+  companyId        String   @db.VarChar(255)
+  memberId         String   @db.Uuid
+  membershipId     String   @db.Uuid
+  paymentId        String   @db.VarChar(255) // Whop payment ID
+  revenueCents     Int
+  attributedSendId String?  @db.Uuid
+  metadata         Json?    // Additional conversion data
+  createdAt        DateTime @default(now()) @db.Timestamptz
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  member     Member     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  send       Send?      @relation(fields: [attributedSendId], references: [id])
+
+  @@index([companyId])
+  @@index([memberId])
+  @@index([paymentId])
+  @@index([attributedSendId])
+  @@index([createdAt])
+  @@map("conversions")
+}
+
+// =============================================================================
+// REVENUEANGEL MODELS - Webhooks & Experiments
+// =============================================================================
+
+model WebhookEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @db.VarChar(255)
+  eventType   String   @db.VarChar(255)
+  raw         Json     // Complete webhook payload
+  processed   Boolean  @default(false)
+  processedAt DateTime? @db.Timestamptz
+  receivedAt  DateTime @default(now()) @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([eventType])
+  @@index([processed])
+  @@index([receivedAt])
+  @@map("webhook_events")
+}
+
+model ExperimentAssignment {
+  id            String        @id @default(uuid()) @db.Uuid
+  companyId     String        @db.VarChar(255)
+  experimentKey String        @db.VarChar(255)
+  subjectType   SubjectType
+  subjectId     String        @db.Uuid
+  variant       ABGroup
+  createdAt     DateTime      @default(now()) @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  member  Member? @relation(fields: [subjectId], references: [id], onDelete: Cascade, map: "experiment_assignments_member_fkey")
+  lead    Lead?   @relation(fields: [subjectId], references: [id], onDelete: Cascade, map: "experiment_assignments_lead_fkey")
+
+  @@unique([companyId, experimentKey, subjectType, subjectId])
+  @@index([companyId])
+  @@index([experimentKey])
+  @@map("experiment_assignments")
+}
+
+enum SubjectType {
+  member
+  lead
 }

@@ -9,6 +9,7 @@
 		"lint": "next lint",
 		"postinstall": "prisma generate",
 		"bot": "tsx lib/core-bot.ts",
+		"jobs": "tsx lib/background-worker.ts",
 		"db:push": "prisma db push",
 		"db:studio": "prisma studio",
 		"type-check": "tsc --noEmit"
@@ -31,6 +32,7 @@
 		"lucide-react": "^0.511.0",
 		"next": "15.3.2",
 		"openai": "^4.100.0",
+		"pg-boss": "^11.1.1",
 		"prisma": "^6.8.2",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
@@ -55,5 +57,5 @@
 		"node": ">=18.0.0",
 		"npm": ">=8.0.0"
 	},
-	"packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531"
+	"packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
