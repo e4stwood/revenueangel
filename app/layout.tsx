@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Whop App",
-  description: "My Whop App",
+  title: "RevenueAngel - Automated Revenue Recovery for Whop",
+  description: "Turn every member event into revenue. Nurture leads, upsell members, and prevent churn — all on autopilot.",
 };
 
 export default function RootLayout({
