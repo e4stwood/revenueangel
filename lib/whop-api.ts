@@ -1,8 +1,22 @@
-import { verifyUserToken } from '@whop/api';
+import { validateToken, getToken } from '@whop-apps/sdk';
 import Whop from '@whop/sdk';
 import { config } from './shared-utils';
 
-export { verifyUserToken };
+// Create verifyUserToken wrapper for compatibility
+export async function verifyUserToken(headers: Headers | any): Promise<{ userId: string | null }> {
+  try {
+    const token = getToken(headers);
+    if (!token) {
+      return { userId: null };
+    }
+    
+    const validation = await validateToken({ token });
+    return { userId: (validation as any)?.user_id || null };
+  } catch (error) {
+    console.error('Token verification failed:', error);
+    return { userId: null };
+  }
+}
 
 // Initialize Whop SDK client
 const whopClient = new Whop({

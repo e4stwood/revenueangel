@@ -6,7 +6,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { verifyUserToken } from '@lib/whop-api';
+import { verifyUserToken } from './whop-api';
 import { WhopAPI } from '@whop-apps/sdk';
 import { dataManager } from './data-manager';
 
