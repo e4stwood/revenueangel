@@ -23,24 +23,21 @@ async function startWorker() {
       JOB_TYPES.PLAYBOOK_SCHEDULER,
       async (job) => {
         await processPlaybookScheduler(job.data);
-      },
-      { teamSize: 1 } // Only one scheduler should run at a time
+      }
     );
 
     await jobQueue.work(
       JOB_TYPES.MESSAGE_DISPATCHER,
       async (job) => {
         await processMessageDispatcher(job.data);
-      },
-      { teamSize: 5 } // Can process multiple batches in parallel
+      }
     );
 
     await jobQueue.work(
       JOB_TYPES.WEBHOOK_PROCESSOR,
       async (job) => {
         await processWebhook(job.data);
-      },
-      { teamSize: 10 } // Can process many webhooks in parallel
+      }
     );
 
     logger.info('✅ Background worker started successfully');

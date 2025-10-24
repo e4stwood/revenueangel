@@ -7,3 +7,4 @@ Look at plan and implementations - work out whats next?
 I think we need a way to setup playbook - look at initial imp - its sort of saying do it via the api ? why ? 
 do we need an onboaridng flow?
 
+Entry point / onboarding ui still talks about the og app ? maybe ?

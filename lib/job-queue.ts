@@ -199,18 +199,12 @@ class JobQueue {
    */
   async work<T = any>(
     jobType: string,
-    handler: (job: PgBoss.Job<T>) => Promise<void>,
-    options?: PgBoss.WorkOptions
+    handler: (job: PgBoss.Job<T>) => Promise<void>
   ): Promise<void> {
     if (!this.boss) throw new Error('Job queue not initialized');
 
     await this.boss.work(
       jobType,
-      {
-        teamSize: options?.teamSize || 5,
-        teamConcurrency: options?.teamConcurrency || 1,
-        ...options,
-      },
       async (job) => {
         try {
           logger.debug(`Processing job ${jobType}`, {
@@ -234,9 +228,7 @@ class JobQueue {
       }
     );
 
-    logger.info(`Worker registered for ${jobType}`, {
-      teamSize: options?.teamSize || 5
-    });
+    logger.info(`Worker registered for ${jobType}`);
   }
 
   /**
